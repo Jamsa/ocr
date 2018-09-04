@@ -135,7 +135,7 @@ def avg_pool(x, ksize=(2, 2), stride=(2, 2)):
 
 # 生成一个训练batch
 def get_next_batch(batch_size=128):
-    ds = dataset.DataSet('/Users/zhujie/Documents/devel/python/keras/chinese-ocr-chinese-ocr-python-3.6/train/data/dataline')
+    ds = dataset.DataSet('../dataline')
     inputs, sparse_targets, labels, seq_len = ds.get_next_batch(batch_size)
     return inputs,sparse_targets,seq_len
 
@@ -300,7 +300,7 @@ def train():
             print(log.format(curr_epoch + 1, num_epochs, steps, train_cost, train_ler, val_cost, val_ler, time.time() - start, lr))
 
 if __name__ == '__main__':
-    ds = dataset.DataSet('/Users/zhujie/Documents/devel/python/keras/chinese-ocr-chinese-ocr-python-3.6/train/data/dataline')
+    ds = dataset.DataSet('../dataline')
     inputs, sparse_targets, labels, seq_len = ds.get_next_batch(2) #get_next_batch(2)
     print(inputs.shape)
     print(seq_len.shape)
