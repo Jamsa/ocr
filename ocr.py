@@ -37,17 +37,27 @@ MOMENTUM = 0.9
 
 DIGITS='0123456789'
 BATCHES = 10
-BATCH_SIZE = 64
+BATCH_SIZE = 16#64
 TRAIN_SIZE = BATCHES * BATCH_SIZE
 
+#下面两个decode方法实际上作用不大。在单个样本的情况下（sparse_tensor只包含一个样本的结果时），效果等同于直接取sparse_tensor的values
+#在多个样本的情况下，只是起了分行的作用。这种情况下可以直接合并。在i!=current_i时换行即可。调用取值可以直接用 DIGITS[spars_tensor[1][offset]]，而不需要调用decode_a_seq
+
 def decode_sparse_tensor(sparse_tensor):
+    """
+    解析 tf.nn.ctc_beam_search_decoder 输出的稀疏矩阵
+    sparse_tensor 的 [0],[1],[2]分别为 索引,值,dense_shape
+    """
     #print("sparse_tensor = ", sparse_tensor)
     decoded_indexes = list()
     current_i = 0
     current_seq = []
+
+    # 行 和 索引(行,列)
     for offset, i_and_index in enumerate(sparse_tensor[0]):
         i = i_and_index[0]
         if i != current_i:
+            # 换行
             decoded_indexes.append(current_seq)
             current_i = i
             current_seq = list()
@@ -109,7 +119,7 @@ def sparse_tuple_from(sequences, dtype=np.int32):
 
     indices = np.asarray(indices, dtype=np.int64)
     values = np.asarray(values, dtype=dtype)
-    shape = np.asarray([len(sequences), np.asarray(indices).max(0)[1] + 1], dtype=np.int64)
+    shape = np.asarray([len(sequences), np.asarray(indices).max(0)[1] + 1], dtype=np.int64) #此shape应与sequences相同吧？
 
 
     return indices, values, shape
@@ -132,32 +142,6 @@ def max_pool(x, ksize=(2, 2), stride=(2, 2)):
 def avg_pool(x, ksize=(2, 2), stride=(2, 2)):
     return tf.nn.avg_pool(x, ksize=[1, ksize[0], ksize[1], 1],strides=[1, stride[0], stride[1], 1], padding='SAME')
 
-
-# 生成一个训练batch
-def get_next_batch(batch_size=128):
-    ds = dataset.DataSet('../dataline')
-    inputs, sparse_targets, labels, seq_len = ds.get_next_batch(batch_size)
-    return inputs,sparse_targets,seq_len
-
-def get_next_batch1(batch_size=128):
-    obj = gen_id_card()
-    #(batch_size,256,32)
-    inputs = np.zeros([batch_size, OUTPUT_SHAPE[1],OUTPUT_SHAPE[0]])
-    codes = []
-
-    for i in range(batch_size):
-        #生成不定长度的字串
-        image, text, vec = obj.gen_image(True)
-        #np.transpose 矩阵转置 (32*256,) => (32,256) => (256,32)
-        inputs[i,:] = np.transpose(image.reshape((OUTPUT_SHAPE[0],OUTPUT_SHAPE[1])))
-        codes.append(list(text))
-    targets = [np.asarray(i) for i in codes]
-    #print targets
-    sparse_targets = sparse_tuple_from(targets)
-    #(batch_size,) 值都是256
-    seq_len = np.ones(inputs.shape[0]) * OUTPUT_SHAPE[1]
-
-    return inputs, sparse_targets, seq_len
 
 #定义CNN网络，处理图片，
 def convolutional_layers():
@@ -199,6 +183,7 @@ def get_train_model():
     #features = convolutional_layers()
     #print features.get_shape()
 
+    # (batch_size, 256, 32)
     inputs = tf.placeholder(tf.float32, [None, None, OUTPUT_SHAPE[0]])
 
     #定义ctc_loss需要的稀疏矩阵
@@ -209,27 +194,27 @@ def get_train_model():
 
     #定义LSTM网络
     cell = tf.contrib.rnn.LSTMCell(num_hidden, state_is_tuple=True)
-    stack = tf.contrib.rnn.MultiRNNCell([cell] * num_layers, state_is_tuple=True)
-    outputs, _ = tf.nn.dynamic_rnn(cell, inputs, seq_len, dtype=tf.float32)
+    stack = tf.contrib.rnn.MultiRNNCell([cell] * num_layers, state_is_tuple=True)  # 没使用的变量
+    outputs, _ = tf.nn.dynamic_rnn(cell, inputs, seq_len, dtype=tf.float32)  # outputs 形状与 inputs 相同
 
     shape = tf.shape(inputs)
     batch_s, max_timesteps = shape[0], shape[1]
 
-    outputs = tf.reshape(outputs, [-1, num_hidden])
+    outputs = tf.reshape(outputs, [-1, num_hidden])  #(batch_size*256,64)
     W = tf.Variable(tf.truncated_normal([num_hidden,
                                          num_classes],
-                                        stddev=0.1), name="W")
+                                        stddev=0.1), name="W")  #(64,12)
     b = tf.Variable(tf.constant(0., shape=[num_classes]), name="b")
 
-    logits = tf.matmul(outputs, W) + b
+    logits = tf.matmul(outputs, W) + b  # (batch_size*256,12) 概率分布值
 
-    logits = tf.reshape(logits, [batch_s, -1, num_classes])
+    logits = tf.reshape(logits, [batch_s, -1, num_classes])  # (batch_size,256,12)
 
-    logits = tf.transpose(logits, (1, 0, 2))
+    logits = tf.transpose(logits, (1, 0, 2))  # (256, batch_size,12)
 
     return logits, inputs, targets, seq_len, W, b
 
-def train():
+def train(ds):
     global_step = tf.Variable(0, trainable=False)
     learning_rate = tf.train.exponential_decay(INITIAL_LEARNING_RATE,
                                                global_step,
@@ -242,15 +227,15 @@ def train():
     cost = tf.reduce_mean(loss)
 
     #optimizer = tf.train.MomentumOptimizer(learning_rate=learning_rate,momentum=MOMENTUM).minimize(cost, global_step=global_step)
-    optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss,global_step=global_step)
-    decoded, log_prob = tf.nn.ctc_beam_search_decoder(logits, seq_len, merge_repeated=False)
+    optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss, global_step=global_step)
+    decoded, log_prob = tf.nn.ctc_beam_search_decoder(logits, seq_len, merge_repeated=False)  # decode包含标签值（应该是seq_len的，包含重复标签）
 
     acc = tf.reduce_mean(tf.edit_distance(tf.cast(decoded[0], tf.int32), targets))
 
     init = tf.global_variables_initializer()
 
     def do_report():
-        test_inputs,test_targets,test_seq_len = get_next_batch(BATCH_SIZE)
+        test_inputs, test_targets, _, test_seq_len = ds.get_next_batch(BATCH_SIZE)
         test_feed = {inputs: test_inputs,
                      targets: test_targets,
                      seq_len: test_seq_len}
@@ -259,11 +244,11 @@ def train():
         # decoded_list = decode_sparse_tensor(dd)
 
     def do_batch():
-        train_inputs, train_targets, train_seq_len = get_next_batch(BATCH_SIZE)
+        train_inputs, train_targets, _, train_seq_len = ds.get_next_batch(BATCH_SIZE)
 
         feed = {inputs: train_inputs, targets: train_targets, seq_len: train_seq_len}
 
-        b_loss,b_targets, b_logits, b_seq_len,b_cost, steps, _ = session.run([loss, targets, logits, seq_len, cost, global_step, optimizer], feed)
+        b_loss, b_targets, b_logits, b_seq_len, b_cost, steps, ded, _ = session.run([loss, targets, logits, seq_len, cost, global_step, decoded, optimizer], feed)
 
         #print b_loss
         #print b_targets, b_logits, b_seq_len
@@ -289,7 +274,7 @@ def train():
 
             train_cost /= TRAIN_SIZE
 
-            train_inputs, train_targets, train_seq_len = get_next_batch(BATCH_SIZE)
+            train_inputs, train_targets, _, train_seq_len = ds.get_next_batch(BATCH_SIZE)
             val_feed = {inputs: train_inputs,
                         targets: train_targets,
                         seq_len: train_seq_len}
@@ -299,12 +284,15 @@ def train():
             log = "Epoch {}/{}, steps = {}, train_cost = {:.3f}, train_ler = {:.3f}, val_cost = {:.3f}, val_ler = {:.3f}, time = {:.3f}s, learning_rate = {}"
             print(log.format(curr_epoch + 1, num_epochs, steps, train_cost, train_ler, val_cost, val_ler, time.time() - start, lr))
 
+
 if __name__ == '__main__':
-    ds = dataset.DataSet('../dataline')
+    print(decode_sparse_tensor([[[0,0],[2,2]],[0,1,2,3,4,5,6],[0]]))
+
+    ds = dataset.DataSet('/Users/zhujie/Documents/devel/python/keras/chinese-ocr-chinese-ocr-python-3.6/train/data/dataline')
     inputs, sparse_targets, labels, seq_len = ds.get_next_batch(2) #get_next_batch(2)
     print(inputs.shape)
     print(seq_len.shape)
     results = decode_sparse_tensor(sparse_targets)
 
     print(results)
-    train()
+    train(ds)
