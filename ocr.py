@@ -40,10 +40,27 @@ BATCHES = 10
 BATCH_SIZE = 16#64
 TRAIN_SIZE = BATCHES * BATCH_SIZE
 
+
+def decode_sparse_tensor(sparse_tensor):
+    rows = list()
+    current_row = list()
+    current_row_num = 0
+    for i, row in enumerate(sparse_tensor[0]):
+        row_num = row[0]
+        if row_num != current_row_num:
+            rows.append(current_row)
+            current_row = list()
+            current_row_num = row_num
+        current_row.append(DIGITS[sparse_tensor[1][i]])
+    rows.append(current_row)
+    return rows
+
+
+
 #下面两个decode方法实际上作用不大。在单个样本的情况下（sparse_tensor只包含一个样本的结果时），效果等同于直接取sparse_tensor的values
 #在多个样本的情况下，只是起了分行的作用。这种情况下可以直接合并。在i!=current_i时换行即可。调用取值可以直接用 DIGITS[spars_tensor[1][offset]]，而不需要调用decode_a_seq
 
-def decode_sparse_tensor(sparse_tensor):
+def decode_sparse_tensor1(sparse_tensor):
     """
     解析 tf.nn.ctc_beam_search_decoder 输出的稀疏矩阵
     sparse_tensor 的 [0],[1],[2]分别为 索引,值,dense_shape
