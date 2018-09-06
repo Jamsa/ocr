@@ -22,7 +22,7 @@ OUTPUT_SHAPE = (32,256)
 num_epochs = 10000
 
 num_hidden = 64
-num_layers = 1
+num_layers = 2#1
 
 #obj = gen_id_card()
 
@@ -118,29 +118,30 @@ def avg_pool(x, ksize=(2, 2), stride=(2, 2)):
 #定义CNN网络，处理图片，
 def convolutional_layers():
     #输入数据，shape [batch_size, 32, 256, 3]
-    inputs = tf.placeholder(tf.float32, [None, OUTPUT_SHAPE[0], OUTPUT_SHAPE[1], 3])
+    inputs = tf.placeholder(tf.float32, [BATCH_SIZE, OUTPUT_SHAPE[0], OUTPUT_SHAPE[1], 3])
 
     #第一层卷积层, 32*256*3 => 16*128*48
-    W_conv1 = weight_variable([5, 5, 1, 48])
+    W_conv1 = weight_variable([3, 3, 3, 48])
     b_conv1 = bias_variable([48])
     #x_expanded = tf.expand_dims(inputs, 3)
     x_expanded = inputs
     h_conv1 = tf.nn.relu(conv2d(x_expanded, W_conv1) + b_conv1)
     h_pool1 = max_pool(h_conv1, ksize=(2, 2), stride=(2, 2))
 
+    #return inputs, h_pool1
     #第二层, 16*128*48 => 16*64*64
-    W_conv2 = weight_variable([5, 5, 48, 64])
+    W_conv2 = weight_variable([3, 3, 48, 64])
     b_conv2 = bias_variable([64])
     h_conv2 = tf.nn.relu(conv2d(h_pool1, W_conv2) + b_conv2)
     h_pool2 = max_pool(h_conv2, ksize=(2, 1), stride=(2, 1))
 
     #第三层, 16*64*64 => 8*32*128
-    W_conv3 = weight_variable([5, 5, 64, 128])
+    W_conv3 = weight_variable([3, 3, 64, 128])
     b_conv3 = bias_variable([128])
     h_conv3 = tf.nn.relu(conv2d(h_pool2, W_conv3) + b_conv3)
     h_pool3 = max_pool(h_conv3, ksize=(2, 2), stride=(2, 2))
 
-    return h_pool3
+    return inputs, h_pool3
 
     #全连接
     W_fc1 = weight_variable([16 * 8 * OUTPUT_SHAPE[1], OUTPUT_SHAPE[1]])
@@ -162,28 +163,33 @@ def get_train_model():
     # inputs = tf.placeholder(tf.float32, [None, None, OUTPUT_SHAPE[0]])
 
     # (batch_size,8,32,128)
-    inputs = convolutional_layers()
-    shape = tf.shape(inputs) # [batch_size,height,width,features]
-
+    inputs,inputs21 = convolutional_layers()
+    shape = inputs21.get_shape().as_list() # [batch_size,height,width,features]
+    print('aaaa'+str(shape))
     #定义ctc_loss需要的稀疏矩阵
     targets = tf.sparse_placeholder(tf.int32)
 
     #1维向量 序列长度 [batch_size,]
     #seq_len = tf.placeholder(tf.int32, [None])
-    seq_len = tf.fill(shape[0], shape[2])
+    seq_len = tf.fill([shape[0]], shape[2])
 
-    transposed = tf.transpose(inputs, perm=[0,2,1,3])  #[batch_size,width,height,features]
-    inputs = tf.reshape(transposed,[shape[0],-1,shape[1]*shape[3]])
+    transposed = tf.transpose(inputs21, perm=[0,2,1,3])  #[batch_size,width,height,features]
+    print('bbbb'+str(transposed.get_shape().as_list()))
+
+    inputs11 = tf.reshape(transposed,[shape[0],shape[2],shape[1]*shape[3]])
+    print('cccc'+str(inputs11.get_shape().as_list()))
 
     #定义LSTM网络
     cell = tf.contrib.rnn.LSTMCell(num_hidden, state_is_tuple=True)
     stack = tf.contrib.rnn.MultiRNNCell([cell] * num_layers, state_is_tuple=True)  # 没使用的变量
-    outputs, _ = tf.nn.dynamic_rnn(cell, inputs, seq_len, dtype=tf.float32)  # outputs 形状与 inputs 相同
+    outputs, _ = tf.nn.dynamic_rnn(cell, inputs11, seq_len, dtype=tf.float32)  # outputs 形状与 inputs 相同
 
-    shape = tf.shape(inputs)
-    batch_s, max_timesteps = shape[0], shape[1]
+    shape1 = inputs11.get_shape().as_list()
+    print('dddd'+str(shape1))
+    batch_s, max_timesteps = shape1[0], shape1[1]
 
     outputs = tf.reshape(outputs, [-1, num_hidden])  #(batch_size*256,64)
+    print('eee')
     W = tf.Variable(tf.truncated_normal([num_hidden,
                                          num_classes],
                                         stddev=0.1), name="W")  #(64,12)
@@ -194,7 +200,7 @@ def get_train_model():
     logits = tf.reshape(logits, [batch_s, -1, num_classes])  # (batch_size,256,12)
 
     logits = tf.transpose(logits, (1, 0, 2))  # (256, batch_size,12)
-
+    print('ffff')
     return logits, inputs, targets, seq_len, W, b
 
 def train(ds):
@@ -228,7 +234,6 @@ def train(ds):
 
     def do_batch():
         train_inputs, train_targets, _, train_seq_len = ds.get_next_batch(BATCH_SIZE,gray_scale=False, transpose=False)
-
         feed = {inputs: train_inputs, targets: train_targets, seq_len: train_seq_len}
 
         b_loss, b_targets, b_logits, b_seq_len, b_cost, steps, ded, _ = session.run([loss, targets, logits, seq_len, cost, global_step, decoded, optimizer], feed)
@@ -257,7 +262,7 @@ def train(ds):
 
             train_cost /= TRAIN_SIZE
 
-            train_inputs, train_targets, _, train_seq_len = ds.get_next_batch(BATCH_SIZE)
+            train_inputs, train_targets, _, train_seq_len = ds.get_next_batch(BATCH_SIZE,gray_scale=False, transpose=False)
             val_feed = {inputs: train_inputs,
                         targets: train_targets,
                         seq_len: train_seq_len}
@@ -271,7 +276,7 @@ def train(ds):
 if __name__ == '__main__':
     print(decode_sparse_tensor([[[0,0],[2,2]],[0,1,2,3,4,5,6],[0]]))
 
-    ds = dataset.DataSet('/Users/zhujie/Documents/devel/python/keras/chinese-ocr-chinese-ocr-python-3.6/train/data/dataline')
+    ds = dataset.DataSet('../dataline')
     inputs, sparse_targets, labels, seq_len = ds.get_next_batch(2, gray_scale=False, transpose=False) #get_next_batch(2)
     print(inputs.shape)
     results = decode_sparse_tensor(sparse_targets)
