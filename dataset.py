@@ -38,22 +38,29 @@ class DataSet(object):
 
         return self.__files, self.__labels, self.__encoded_labels
 
-    def get_next_batch(self, batch_size=64):
+    def get_next_batch(self, batch_size=64, gray_scale=True, transpose=True, resize_to=(256, 32)):
         """从数据集中随机获取一批样本"""
         sel = np.random.choice(len(self.__labels), batch_size)
         images = []
         for i, file in enumerate(np.array(self.__files)[sel]):
             image = Image.open(file)
-            image = image.convert('L') # 转为灰度图
-            image = image.resize((256, 32))
+            if gray_scale:
+                image = image.convert('L')  # 转为灰度图
+            if resize_to is not None:
+                image = image.resize(resize_to)
             # if i == 0:
             #     image.show()
-            images.append(np.transpose(np.asarray(image)))
+            image = np.asarray(image)
+            if transpose:
+                image = np.transpose(image)
+
+            images.append(image)
         labels = np.array(self.__encoded_labels)[sel]
-        sparse_labels = [np.asarray(i) for i in labels]
+        # sparse_labels = [np.asarray(i) for i in labels]
         sparse_labels = sparse_tuple_from(labels)
 
-        return np.array(images), sparse_labels, labels, (np.ones(batch_size) * 256)
+        images = np.array(images)
+        return images, sparse_labels, labels, (np.ones(batch_size) * images.shape[0])
 
 
 def sparse_tuple_from(sequences, dtype=np.int32):
