@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """
 tf CNN+LSTM+CTC 训练识别不定长数字字符图片
-@author: pengyuanjie
+@author: zhujie
 """
 
 
@@ -22,14 +22,14 @@ OUTPUT_SHAPE = (32,256)
 num_epochs = 10000
 
 num_hidden = 64
-num_layers = 2#1
+num_layers = 1
 
 #obj = gen_id_card()
 
 num_classes = len(dataset.DICT) + 1 + 1  # 10位数字 + blank + ctc blank
 
 #初始化学习速率
-INITIAL_LEARNING_RATE = 1e-3
+INITIAL_LEARNING_RATE = 5e-3#3
 DECAY_STEPS = 5000
 REPORT_STEPS = 100
 LEARNING_RATE_DECAY_FACTOR = 0.9  # The learning rate decay factor
@@ -37,7 +37,7 @@ MOMENTUM = 0.9
 
 DIGITS='0123456789'
 BATCHES = 10
-BATCH_SIZE = 16#64
+BATCH_SIZE = 64
 TRAIN_SIZE = BATCHES * BATCH_SIZE
 
 
@@ -121,7 +121,7 @@ def convolutional_layers():
     inputs = tf.placeholder(tf.float32, [BATCH_SIZE, OUTPUT_SHAPE[0], OUTPUT_SHAPE[1], 3])
 
     #第一层卷积层, 32*256*3 => 16*128*48
-    W_conv1 = weight_variable([3, 3, 3, 48])
+    W_conv1 = weight_variable([5, 5, 3, 48])
     b_conv1 = bias_variable([48])
     #x_expanded = tf.expand_dims(inputs, 3)
     x_expanded = inputs
@@ -156,6 +156,7 @@ def convolutional_layers():
     return inputs,features
 
 def get_train_model():
+    keep_prob = tf.placeholder(tf.float32)
     #features = convolutional_layers()
     #print features.get_shape()
 
@@ -163,9 +164,9 @@ def get_train_model():
     # inputs = tf.placeholder(tf.float32, [None, None, OUTPUT_SHAPE[0]])
 
     # (batch_size,8,32,128)
-    inputs,inputs21 = convolutional_layers()
-    shape = inputs21.get_shape().as_list() # [batch_size,height,width,features]
-    print('aaaa'+str(shape))
+    inputs,cnn_outputs = convolutional_layers()
+    shape = cnn_outputs.get_shape().as_list() # [batch_size,height,width,features]
+    print('cnn_outputs shape:'+str(shape))
     #定义ctc_loss需要的稀疏矩阵
     targets = tf.sparse_placeholder(tf.int32)
 
@@ -173,23 +174,22 @@ def get_train_model():
     #seq_len = tf.placeholder(tf.int32, [None])
     seq_len = tf.fill([shape[0]], shape[2])
 
-    transposed = tf.transpose(inputs21, perm=[0,2,1,3])  #[batch_size,width,height,features]
-    print('bbbb'+str(transposed.get_shape().as_list()))
+    transposed = tf.transpose(cnn_outputs, perm=[0,2,1,3])  #[batch_size,width,height,features]
+    print('cnn_output transposed shape:'+str(transposed.get_shape().as_list()))
 
-    inputs11 = tf.reshape(transposed,[shape[0],shape[2],shape[1]*shape[3]])
-    print('cccc'+str(inputs11.get_shape().as_list()))
+    rnn_inputs = tf.reshape(transposed,[shape[0],shape[2],shape[1]*shape[3]])
+    print('rnn_inputs shape:'+str(rnn_inputs.get_shape().as_list()))
 
     #定义LSTM网络
     cell = tf.contrib.rnn.LSTMCell(num_hidden, state_is_tuple=True)
     stack = tf.contrib.rnn.MultiRNNCell([cell] * num_layers, state_is_tuple=True)  # 没使用的变量
-    outputs, _ = tf.nn.dynamic_rnn(cell, inputs11, seq_len, dtype=tf.float32)  # outputs 形状与 inputs 相同
+    outputs, _ = tf.nn.dynamic_rnn(cell, rnn_inputs, seq_len, dtype=tf.float32)  # outputs 形状与 inputs 相同
+    outputs = tf.nn.dropout(outputs, keep_prob)
 
-    shape1 = inputs11.get_shape().as_list()
-    print('dddd'+str(shape1))
-    batch_s, max_timesteps = shape1[0], shape1[1]
+    shape = rnn_inputs.get_shape().as_list()
+    batch_s, max_timesteps = shape[0], shape[1]
 
     outputs = tf.reshape(outputs, [-1, num_hidden])  #(batch_size*256,64)
-    print('eee')
     W = tf.Variable(tf.truncated_normal([num_hidden,
                                          num_classes],
                                         stddev=0.1), name="W")  #(64,12)
@@ -198,10 +198,8 @@ def get_train_model():
     logits = tf.matmul(outputs, W) + b  # (batch_size*256,12) 概率分布值
 
     logits = tf.reshape(logits, [batch_s, -1, num_classes])  # (batch_size,256,12)
-
     logits = tf.transpose(logits, (1, 0, 2))  # (256, batch_size,12)
-    print('ffff')
-    return logits, inputs, targets, seq_len, W, b
+    return logits, inputs, targets, seq_len, W, b,keep_prob
 
 def train(ds):
     global_step = tf.Variable(0, trainable=False)
@@ -210,7 +208,7 @@ def train(ds):
                                                DECAY_STEPS,
                                                LEARNING_RATE_DECAY_FACTOR,
                                                staircase=True)
-    logits, inputs, targets, seq_len, W, b = get_train_model()
+    logits, inputs, targets, seq_len, W, b,keep_prob = get_train_model()
 
     loss = tf.nn.ctc_loss(labels=targets, inputs=logits, sequence_length=seq_len)
     cost = tf.reduce_mean(loss)
@@ -227,14 +225,15 @@ def train(ds):
         test_inputs, test_targets, _, test_seq_len = ds.get_next_batch(BATCH_SIZE, gray_scale=False, transpose=False)
         test_feed = {inputs: test_inputs,
                      targets: test_targets,
-                     seq_len: test_seq_len}
+                     seq_len: test_seq_len,
+                     keep_prob: 1.0}
         dd, log_probs, accuracy = session.run([decoded[0], log_prob, acc], test_feed)
         report_accuracy(dd, test_targets)
         # decoded_list = decode_sparse_tensor(dd)
 
     def do_batch():
         train_inputs, train_targets, _, train_seq_len = ds.get_next_batch(BATCH_SIZE,gray_scale=False, transpose=False)
-        feed = {inputs: train_inputs, targets: train_targets, seq_len: train_seq_len}
+        feed = {inputs: train_inputs, targets: train_targets, seq_len: train_seq_len,keep_prob:0.75}
 
         b_loss, b_targets, b_logits, b_seq_len, b_cost, steps, ded, _ = session.run([loss, targets, logits, seq_len, cost, global_step, decoded, optimizer], feed)
 
@@ -265,7 +264,8 @@ def train(ds):
             train_inputs, train_targets, _, train_seq_len = ds.get_next_batch(BATCH_SIZE,gray_scale=False, transpose=False)
             val_feed = {inputs: train_inputs,
                         targets: train_targets,
-                        seq_len: train_seq_len}
+                        seq_len: train_seq_len,
+                        keep_prob: 1.0}
 
             val_cost, val_ler, lr, steps = session.run([cost, acc, learning_rate, global_step], feed_dict=val_feed)
 
@@ -280,6 +280,6 @@ if __name__ == '__main__':
     inputs, sparse_targets, labels, seq_len = ds.get_next_batch(2, gray_scale=False, transpose=False) #get_next_batch(2)
     print(inputs.shape)
     results = decode_sparse_tensor(sparse_targets)
-
     print(results)
+
     train(ds)
