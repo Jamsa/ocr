@@ -22,14 +22,14 @@ OUTPUT_SHAPE = (32,256)
 num_epochs = 10000
 
 num_hidden = 64
-num_layers = 1
+num_layers = 2 #1
 
 #obj = gen_id_card()
 
-num_classes = len(dataset.DICT) + 1 + 1  # 10位数字 + blank + ctc blank
+num_classes = len(dataset.DICT) + 1 #+ 1  # 10位数字 + blank + ctc blank
 
 #初始化学习速率
-INITIAL_LEARNING_RATE = 5e-3#3
+INITIAL_LEARNING_RATE = 1e-2#3
 DECAY_STEPS = 5000
 REPORT_STEPS = 100
 LEARNING_RATE_DECAY_FACTOR = 0.9  # The learning rate decay factor
@@ -130,13 +130,13 @@ def convolutional_layers():
 
     #return inputs, h_pool1
     #第二层, 16*128*48 => 16*64*64
-    W_conv2 = weight_variable([3, 3, 48, 64])
+    W_conv2 = weight_variable([5, 5, 48, 64])
     b_conv2 = bias_variable([64])
     h_conv2 = tf.nn.relu(conv2d(h_pool1, W_conv2) + b_conv2)
     h_pool2 = max_pool(h_conv2, ksize=(2, 1), stride=(2, 1))
 
     #第三层, 16*64*64 => 8*32*128
-    W_conv3 = weight_variable([3, 3, 64, 128])
+    W_conv3 = weight_variable([5, 5, 64, 128])
     b_conv3 = bias_variable([128])
     h_conv3 = tf.nn.relu(conv2d(h_pool2, W_conv3) + b_conv3)
     h_pool3 = max_pool(h_conv3, ksize=(2, 2), stride=(2, 2))
@@ -181,10 +181,12 @@ def get_train_model():
     print('rnn_inputs shape:'+str(rnn_inputs.get_shape().as_list()))
 
     #定义LSTM网络
-    cell = tf.contrib.rnn.LSTMCell(num_hidden, state_is_tuple=True)
-    stack = tf.contrib.rnn.MultiRNNCell([cell] * num_layers, state_is_tuple=True)  # 没使用的变量
-    outputs, _ = tf.nn.dynamic_rnn(cell, rnn_inputs, seq_len, dtype=tf.float32)  # outputs 形状与 inputs 相同
-    outputs = tf.nn.dropout(outputs, keep_prob)
+    #cell = tf.contrib.rnn.LSTMCell(num_hidden, state_is_tuple=True)
+    #stack = tf.contrib.rnn.MultiRNNCell([cell] * num_layers, state_is_tuple=True)  # 没使用的变量
+    cells = [tf.contrib.rnn.DropoutWrapper( tf.contrib.rnn.GRUCell(num_hidden),keep_prob) for _ in range(num_layers)]
+    stack = tf.contrib.rnn.MultiRNNCell(cells, state_is_tuple=True)  # 没使用的变量
+    outputs, _ = tf.nn.dynamic_rnn(stack, rnn_inputs, seq_len, dtype=tf.float32)  # outputs 形状与 inputs 相同
+    #outputs = tf.nn.dropout(outputs, keep_prob)
 
     shape = rnn_inputs.get_shape().as_list()
     batch_s, max_timesteps = shape[0], shape[1]
