@@ -37,7 +37,7 @@ MOMENTUM = 0.9
 
 DIGITS='0123456789'
 BATCHES = 10
-BATCH_SIZE = 64
+BATCH_SIZE = 10
 TRAIN_SIZE = BATCHES * BATCH_SIZE
 
 
@@ -116,7 +116,7 @@ def avg_pool(x, ksize=(2, 2), stride=(2, 2)):
 
 
 #定义CNN网络，处理图片，
-def convolutional_layers():
+def convolutional_layers1():
     #输入数据，shape [batch_size, 32, 256, 3]
     inputs = tf.placeholder(tf.float32, [BATCH_SIZE, OUTPUT_SHAPE[0], OUTPUT_SHAPE[1], 3])
 
@@ -155,6 +155,53 @@ def convolutional_layers():
     features = tf.reshape(features, [shape[0], OUTPUT_SHAPE[1], 1])  # batchsize * outputshape * 1
     return inputs,features
 
+def convolutional_layers():
+    inputs = tf.placeholder(tf.float32, [BATCH_SIZE, OUTPUT_SHAPE[0], OUTPUT_SHAPE[1], 3])
+    input = inputs
+    # 4 conv layer
+    # w_alpha=0.01
+    # w_c1 = tf.Variable(w_alpha * tf.random_normal([5, 5, 3, 32]))
+    w_c1 = tf.get_variable(name='w_c1', shape=[5, 5, 3, 64],
+                           initializer=tf.contrib.layers.xavier_initializer())
+    b_c1 = tf.Variable(tf.constant(0.1, shape=[64]))
+    conv1 = tf.nn.bias_add(tf.nn.conv2d(input, w_c1, strides=[1, 1, 1, 1], padding='SAME'), b_c1)
+    conv1 = tf.nn.relu(conv1)
+    conv1 = tf.nn.max_pool(conv1, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
+
+
+    # w_c2 = tf.Variable(w_alpha * tf.random_normal([5, 5, 32, 64]))
+    w_c2 = tf.get_variable(name='w_c2', shape=[5, 5, 64, 128],
+                           initializer=tf.contrib.layers.xavier_initializer())
+    b_c2 = tf.Variable(tf.constant(0.1, shape=[128]))
+    conv2 = tf.nn.bias_add(tf.nn.conv2d(conv1, w_c2, strides=[1, 1, 1, 1], padding='SAME'), b_c2)
+    conv2 = tf.nn.relu(conv2)
+    conv2 = tf.nn.max_pool(conv2, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
+
+
+    # w_c3 = tf.Variable(w_alpha * tf.random_normal([3, 3, 64, 64]))
+    w_c3 = tf.get_variable(name='w_c3', shape=[3, 3, 128, 128],
+                           initializer=tf.contrib.layers.xavier_initializer())
+    b_c3 = tf.Variable(tf.constant(0.1, shape=[128]))
+    conv3 = tf.nn.bias_add(tf.nn.conv2d(conv2, w_c3, strides=[1, 1, 1, 1], padding='SAME'), b_c3)
+    conv3 = tf.nn.relu(conv3)
+    conv3 = tf.nn.max_pool(conv3, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
+
+
+    # w_c4 = tf.Variable(w_alpha * tf.random_normal([3, 3, 64, 64]))
+    w_c4 = tf.get_variable(name='w_c4', shape=[3, 3, 128, 128],
+                           initializer=tf.contrib.layers.xavier_initializer())
+    b_c4 = tf.Variable(tf.constant(0.1, shape=[128]))
+    conv4 = tf.nn.bias_add(tf.nn.conv2d(conv3, w_c4, strides=[1, 1, 1, 1], padding='SAME'), b_c4)
+    # conv4 = tf.nn.relu(conv4)
+    # conv4 = tf.nn.max_pool(conv4, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1], padding='SAME')
+    # conv4 = tf.nn.dropout(conv4, keep_prob)
+
+    # print(conv4.get_shape().as_list())
+    #shape = tf.shape(conv4)
+    shape = conv4.get_shape().as_list()
+    features = tf.reshape(conv4, [shape[0], OUTPUT_SHAPE[1], 1])  # batchsize * outputshape * 1
+    return input,features
+
 def get_train_model():
     keep_prob = tf.placeholder(tf.float32)
     #features = convolutional_layers()
@@ -164,7 +211,7 @@ def get_train_model():
     # inputs = tf.placeholder(tf.float32, [None, None, OUTPUT_SHAPE[0]])
 
     # (batch_size,8,32,128)
-    inputs,cnn_outputs = convolutional_layers()
+    inputs,cnn_outputs = convolutional_layers1()
     shape = cnn_outputs.get_shape().as_list() # [batch_size,height,width,features]
     print('cnn_outputs shape:'+str(shape))
     #定义ctc_loss需要的稀疏矩阵
@@ -183,7 +230,7 @@ def get_train_model():
     #定义LSTM网络
     #cell = tf.contrib.rnn.LSTMCell(num_hidden, state_is_tuple=True)
     #stack = tf.contrib.rnn.MultiRNNCell([cell] * num_layers, state_is_tuple=True)  # 没使用的变量
-    cells = [tf.contrib.rnn.DropoutWrapper( tf.contrib.rnn.GRUCell(num_hidden),keep_prob) for _ in range(num_layers)]
+    cells = [tf.contrib.rnn.DropoutWrapper( tf.contrib.rnn.LSTMCell(num_hidden, state_is_tuple=True),keep_prob) for _ in range(num_layers)]
     stack = tf.contrib.rnn.MultiRNNCell(cells, state_is_tuple=True)  # 没使用的变量
     outputs, _ = tf.nn.dynamic_rnn(stack, rnn_inputs, seq_len, dtype=tf.float32)  # outputs 形状与 inputs 相同
     #outputs = tf.nn.dropout(outputs, keep_prob)
@@ -278,7 +325,8 @@ def train(ds):
 if __name__ == '__main__':
     print(decode_sparse_tensor([[[0,0],[2,2]],[0,1,2,3,4,5,6],[0]]))
 
-    ds = dataset.DataSet('../dataline')
+    #ds = dataset.DataSet('../dataline')
+    ds = dataset.DataSet('/Users/zhujie/Documents/devel/python/keras/chinese-ocr-chinese-ocr-python-3.6/train/data/dataline')
     inputs, sparse_targets, labels, seq_len = ds.get_next_batch(2, gray_scale=False, transpose=False) #get_next_batch(2)
     print(inputs.shape)
     results = decode_sparse_tensor(sparse_targets)
