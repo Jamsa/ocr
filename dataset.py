@@ -51,6 +51,8 @@ class DataSet(object):
             # if i == 0:
             #     image.show()
             image = np.asarray(image)
+            #imin,imax = image.min(),image.max()
+            #image = (image-imin)/(imax-imin)
             if transpose:
                 image = np.transpose(image)
 
@@ -94,6 +96,7 @@ if __name__ == '__main__':
     #exit(0)
 
     dataset = DataSet('../dataline')
-    (files, el, lb, l) = dataset.get_next_batch()
-    print(el)
-    print(lb[0])
+    (files, el, lb, l) = dataset.get_next_batch(5, gray_scale=False, transpose=False)
+    print(lb)
+    for file in files:
+        Image.fromarray(file).show()
