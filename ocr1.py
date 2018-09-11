@@ -20,7 +20,7 @@ OUTPUT_SHAPE = (32,256)
 
 #训练最大轮次
 num_epochs = 10000
-num_hidden = 64
+num_hidden = 512 #64
 
 num_layers = 2 #1
 
@@ -370,8 +370,8 @@ def train(ds):
 if __name__ == '__main__':
     print(decode_sparse_tensor([[[0,0],[2,2]],[0,1,2,3,4,5,6],[0]]))
 
-    #ds = dataset.DataSet('../bb')
-    ds = dataset.DataSet('/Users/zhujie/Documents/devel/python/keras/chinese-ocr-chinese-ocr-python-3.6/train/data/dataline')
+    ds = dataset.DataSet('../dataline')
+    #ds = dataset.DataSet('/Users/zhujie/Documents/devel/python/keras/chinese-ocr-chinese-ocr-python-3.6/train/data/dataline')
     inputs, sparse_targets, labels, seq_len = ds.get_next_batch(2, gray_scale=False, transpose=False) #get_next_batch(2)
     print(inputs.shape)
     results = decode_sparse_tensor(sparse_targets)

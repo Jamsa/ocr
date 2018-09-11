@@ -8,3 +8,5 @@ fork 自：https://github.com/jimmyleaf/ocr_tensorflow_cnn
 链接:https://pan.baidu.com/s/17457sXD-dsA2iWOKK6-xYw  密码:9uq5
 
 ocr1.py跑到3000 batch左右能得到较好的效果。
+
+num_hidden 从64调整至512能得到更快的收敛速度，在500 batch左右就可以得到较好的效果。
