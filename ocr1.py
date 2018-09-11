@@ -40,47 +40,8 @@ BATCHES =   10
 BATCH_SIZE = 32
 TRAIN_SIZE = BATCHES * BATCH_SIZE
 
+#解析稀梳矩阵
 def decode_sparse_tensor(sparse_tensor):
-    """
-    解析 tf.nn.ctc_beam_search_decoder 输出的稀疏矩阵
-    sparse_tensor 的 [0],[1],[2]分别为 索引,值,dense_shape
-    """
-    #print("sparse_tensor = ", sparse_tensor)
-    decoded_indexes = list()
-    current_i = 0
-    current_seq = []
-
-    # 行 和 索引(行,列)
-    for offset, i_and_index in enumerate(sparse_tensor[0]):
-        i = i_and_index[0]
-        if i != current_i:
-            # 换行
-            decoded_indexes.append(current_seq)
-            current_i = i
-            current_seq = list()
-        current_seq.append(offset)
-    decoded_indexes.append(current_seq)
-    #print("decoded_indexes = ", decoded_indexes)
-    result = []
-    for index in decoded_indexes:
-        #print("index = ", index)
-        result.append(decode_a_seq(index, sparse_tensor))
-        #print(result)
-    return result
-
-def decode_a_seq(indexes, spars_tensor):
-    decoded = []
-    for m in indexes:
-        str = DIGITS[spars_tensor[1][m]]
-        decoded.append(str)
-    # Replacing blank label to none
-    #str_decoded = str_decoded.replace(chr(ord('9') + 1), '')
-    # Replacing space label to space
-    #str_decoded = str_decoded.replace(chr(ord('0') - 1), ' ')
-    # print("ffffffff", str_decoded)
-    return decoded
-
-def decode_sparse_tensor2(sparse_tensor):
     rows = list()
     current_row = list()
     current_row_num = 0
@@ -177,6 +138,7 @@ def convolutional_layers(inputs):
     h_pool3 = max_pool(h_conv3, ksize=(2, 2), stride=(2, 2))
     return h_pool3
 
+#权重初始化优化的卷积层，收敛速度更快，推荐使用
 def convolutional_layers2(inputs):
     # 4 conv layer
     # w_alpha=0.01
@@ -232,7 +194,8 @@ def get_train_model(inputs,keep_prob):
     # inputs = tf.placeholder(tf.float32, [None, None, OUTPUT_SHAPE[0]])
 
     # (batch_size,8,32,128)
-    cnn_outputs = convolutional_layers2(inputs)
+    cnn_outputs = convolutional_layers2(inputs) #此层效果较好
+    #cnn_outputs = convolutional_layers(inputs) #容易出现不收敛的情况
     shape = cnn_outputs.get_shape().as_list() # [batch_size,height,width,features]
     print('cnn_outputs shape:'+str(shape))
     #定义ctc_loss需要的稀疏矩阵
@@ -286,23 +249,6 @@ def train(ds):
     loss = tf.nn.ctc_loss(labels=targets, inputs=logits, sequence_length=seq_len)
     cost = tf.reduce_mean(loss)
 
-    #optimizer = tf.train.MomentumOptimizer(learning_rate=learning_rate,momentum=MOMENTUM).minimize(cost, global_step=global_step)
-    optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss, global_step=global_step)
-    decoded, log_prob = tf.nn.ctc_beam_search_decoder(logits, seq_len, merge_repeated=False)  # decode包含标签值（应该是seq_len的，包含重复标签）
-
-    acc = tf.reduce_mean(tf.edit_distance(tf.cast(decoded[0], tf.int32), targets))
-
-    init = tf.global_variables_initializer()
-
-    def do_report():
-        test_inputs, test_targets, _, test_seq_len = ds.get_next_batch(BATCH_SIZE, gray_scale=False, transpose=False)
-        test_feed = {inputs: test_inputs,
-                     targets: test_targets,
-                     #seq_len: test_seq_len,
-                     keep_prob: 1.0}
-        dd, log_probs, accuracy,cnn_output,rnn_input = session.run([decoded, log_prob, acc,cnn_outputs,rnn_inputs], test_feed)
-        report_accuracy(dd[0], test_targets)
-        # decoded_list = decode_sparse_tensor(dd)
     #optimizer = tf.train.MomentumOptimizer(learning_rate=learning_rate,momentum=MOMENTUM).minimize(cost, global_step=global_step)
     optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(loss, global_step=global_step)
     decoded, log_prob = tf.nn.ctc_beam_search_decoder(logits, seq_len, merge_repeated=False)  # decode包含标签值（应该是seq_len的，包含重复标签）
