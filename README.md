@@ -7,4 +7,4 @@ fork 自：https://github.com/jimmyleaf/ocr_tensorflow_cnn
 
 链接:https://pan.baidu.com/s/17457sXD-dsA2iWOKK6-xYw  密码:9uq5
 
-注意： 当前版本并不能正常收敛
+ocr1.py跑到3000 batch左右能得到较好的效果。
