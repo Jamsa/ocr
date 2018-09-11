@@ -29,7 +29,7 @@ num_layers = 2 #1
 num_classes = len(dataset.DICT) + 1 + 1  # 10位数字 + blank + ctc blank
 
 #初始化学习速率
-INITIAL_LEARNING_RATE = 1e-2
+INITIAL_LEARNING_RATE = 1e-4
 DECAY_STEPS = 5000
 REPORT_STEPS = 100
 LEARNING_RATE_DECAY_FACTOR = 0.9  # The learning rate decay factor
@@ -370,8 +370,8 @@ def train(ds):
 if __name__ == '__main__':
     print(decode_sparse_tensor([[[0,0],[2,2]],[0,1,2,3,4,5,6],[0]]))
 
-    ds = dataset.DataSet('../bb')
-    #ds = dataset.DataSet('/Users/zhujie/Documents/devel/python/keras/chinese-ocr-chinese-ocr-python-3.6/train/data/dataline')
+    #ds = dataset.DataSet('../bb')
+    ds = dataset.DataSet('/Users/zhujie/Documents/devel/python/keras/chinese-ocr-chinese-ocr-python-3.6/train/data/dataline')
     inputs, sparse_targets, labels, seq_len = ds.get_next_batch(2, gray_scale=False, transpose=False) #get_next_batch(2)
     print(inputs.shape)
     results = decode_sparse_tensor(sparse_targets)
